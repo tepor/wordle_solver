@@ -1,125 +1,10 @@
-from audioop import avg
 import json
 import re
-import random as r
 import time
 
-alphabet = ["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"]
-
-class Result:
-    CORRECT = 2
-    CLOSE = 1
-    WRONG = 0
-
-
-class Guess:
-
-    def __init__(self, guessString, result):
-        self.string = guessString
-        self.result = result  # [0,1,0,2,0]
-
-
-class Close:
-
-    def __init__(self, letter, position, count):
-        self.letter = letter
-        self.notAt = {position}
-        self.count = count
-
-    def update(self, position, count):
-        self.notAt.add(position)
-        self.count = max(self.count, count)
-
-
-class KnownInfo:
-
-    def __init__(self):
-        self.guesses = []
-        self.correctList = ["?", "?", "?", "?", "?"]
-        self.closeList = []
-        self.wrongSet = set()
-        self.rowsLeft = 6
-
-    def rebuild(self):
-        for g in self.guesses:
-            for pos, (c, result) in enumerate(zip(g.string, g.result)):
-                if result is Result.WRONG:
-                    self.wrongSet.add(c)
-                elif result is Result.CORRECT:
-                    self.correctList[pos] = c
-                elif result is Result.CLOSE:
-                    count = g.string.count(c)
-                    close = next((x for x in self.closeList if x.letter == c),
-                                 None)
-                    if close is not None:
-                        close.update(pos, count)
-                    else:
-                        self.closeList.append(Close(c, pos, count))
-                else:
-                    raise Exception("Wrong letter type")
-
-    def addGuess(self, guess):
-        self.guesses.append(guess)
-        self.rebuild()
-        self.rowsLeft -= 1
-
-
-class Game:
-
-    def __init__(self, solutions, uncommon, solutionNum=None):
-        self.solutions = solutions
-        self.uncommon = uncommon
-        self.rowsLeft = 6
-        self.rows = []
-        self.solved = False
-        if solutionNum:
-            self.answer = self.solutions[solutionNum]
-        else:
-            self.answer = r.choice(self.solutions)
-
-    def guess(self, word):
-        if word not in self.solutions + self.uncommon:
-            print("Invalid word")
-            return None
-
-        result = []
-        for w, a in zip(list(word), list(self.answer)):
-            if w == a:
-                result.append(str(Result.CORRECT))
-            elif w in self.answer:
-                result.append(str(Result.CLOSE))
-            else:
-                result.append(str(Result.WRONG))
-
-        resultString = "".join(result)
-        if resultString == "22222":
-            self.solved = True
-
-        self.rowsLeft -= 1
-        self.rows.append((word, resultString))
-
-        return resultString
-
-    def colouriseResult(result):
-        def colourise(c):
-            if c == "2":
-                return "🟩"
-            elif c == "1":
-                return "🟨"
-            else:
-                return "⬜"
-        return "".join([colourise(x) for x in result])
-
-    def prettyPrintLastGuess(self):
-        colourResult = Game.colouriseResult(self.rows[-1][1])
-        print("\n " + " ".join(self.rows[-1][0].upper()))
-        print(colourResult)
-
-    def prettyPrintResults(self):
-        for row in self.rows:
-            print(Game.colouriseResult(row[1]))
-
-
+import w_constants
+import w_game
+import w_info
 
 
 def getValidWords(words, info):
@@ -160,8 +45,9 @@ def scoreWord(word, letterScore):
 def rankWords(allWords, validWords, info):
     # Heuristic based on freqeuency of letters
     # Find the most common letters not in the known info
-    ignoredLetters = list(info.wrongSet) + [x for x in info.correctList if x != "?"]
-    letterScore = dict.fromkeys(alphabet, 0)
+    ignoredLetters = list(
+        info.wrongSet) + [x for x in info.correctList if x != "?"]
+    letterScore = dict.fromkeys(w_constants.ALPHABET, 0)
     for word in validWords:
         for c in word:
             if c in ignoredLetters:
@@ -177,17 +63,16 @@ def rankWords(allWords, validWords, info):
     return ranked
 
 
-
 print("Starting Worldle Solver")
 
 # Load the word list
-with open("wordle_solutions.json") as f:
+with open(w_constants.SOLUTIONS_FILE) as f:
     wordRaw = f.read()
 
 wordList = json.loads(wordRaw)
 print(f"Loaded legal word list of {len(wordList)} words")
 
-with open("wordle_uncommon.json") as f:
+with open(w_constants.UNCOMMON_FILE) as f:
     uncommonRaw = f.read()
 
 uncommonList = json.loads(uncommonRaw)
@@ -203,7 +88,7 @@ mode = int(
 if mode == 1:
     print("\nStarting solver\n")
 
-    info = KnownInfo()
+    info = w_info.KnownInfo()
 
     validWords = getValidWords(wordRaw, info)
 
@@ -229,7 +114,7 @@ if mode == 1:
         )
         resultList = [int(x) for x in guessResult]
 
-        info.addGuess(Guess(guessString, resultList))
+        info.addGuess(w_info.Guess(guessString, resultList))
 
         print("Correct:", info.correctList)
         print("Close:",
@@ -241,29 +126,28 @@ if mode == 1:
 
 elif mode == 2:
     print("\nStarting game\n")
-    print(
-        "Guess results are shown as a string of squares\n \
+    print("Guess results are shown as a string of squares\n \
          matching the letters of the guess like \"⬜⬜🟨🟩⬜\"\n \
          ⬜: This letter is not in the answer\n \
          🟨: This letter is in the answer, but not this position\n \
          🟩: This letter is correct\n")
 
-    game = Game(wordList, uncommonList)
+    w_game = w_game.Game(wordList, uncommonList)
 
-    while game.rowsLeft and not game.solved:
+    while w_game.rowsLeft and not w_game.solved:
         guess = input(
-            f"\nPlease enter a guess ({game.rowsLeft} guesses remaining)\n")
-        result = game.guess(guess)
+            f"\nPlease enter a guess ({w_game.rowsLeft} guesses remaining)\n")
+        result = w_game.guess(guess)
         if result is not None:
-            game.prettyPrintLastGuess()
-            
-    if game.solved:
-        print(f"\nCongratulations! You guessed the correct answer: \"{game.answer}\"\n"\
-              f"Solved in {6 - game.rowsLeft} guesses")
+            w_game.prettyPrintLastGuess()
+
+    if w_game.solved:
+        print(f"\nCongratulations! You guessed the correct answer: \"{w_game.answer}\"\n"\
+              f"Solved in {6 - w_game.rowsLeft} guesses")
     else:
-        print(f"\nGame over. The answer was \"{game.answer}\"")
-    
-    game.prettyPrintResults()
+        print(f"\nGame over. The answer was \"{w_game.answer}\"")
+
+    w_game.prettyPrintResults()
 
 elif mode == 3:
     print("\nNot implemented\n")
@@ -276,8 +160,8 @@ elif mode == 4:
     results = []
 
     for round in range(rounds):
-        game = Game(wordList, uncommonList, solutionNum=round)
-        info = KnownInfo()
+        game = w_game.Game(wordList, uncommonList, solutionNum=round)
+        info = w_info.KnownInfo()
         validWords = getValidWords(wordRaw, info)
 
         print(f"\nStarting game {round + 1}/{rounds}")
@@ -303,7 +187,7 @@ elif mode == 4:
 
             result = game.guess(guessString)
 
-            info.addGuess(Guess(guessString, [int(x) for x in result]))
+            info.addGuess(w_info.Guess(guessString, [int(x) for x in result]))
             validWords = getValidWords(wordRaw, info)
 
             game.prettyPrintLastGuess()
@@ -330,7 +214,6 @@ elif mode == 4:
     print(f"Time elapsed: {endTime-startTime}s")
 
     # Known failures: mimic, huger
-
 
 else:
     print("\nInvalid choice\n")
